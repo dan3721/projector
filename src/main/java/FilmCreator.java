@@ -1,4 +1,3 @@
-import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -80,13 +79,13 @@ public class FilmCreator {
 
     private File[] createFrames(File filmDir, File imagesDir) throws Exception {
         File frameseDir = new File(filmDir, "frames");
-        frameseDir.mkdirs();
-        FileUtils.cleanDirectory(frameseDir); // delete any existing frames
-        File[] images = imagesDir.listFiles();
-        for (int i = 0; i < images.length; i++) {
-            createFrame(images[i], i, frameseDir);
-//            break;
-        }
+//        frameseDir.mkdirs();
+//        FileUtils.cleanDirectory(frameseDir); // delete any existing frames
+//        File[] images = imagesDir.listFiles();
+//        for (int i = 0; i < images.length; i++) {
+//            createFrame(images[i], i, frameseDir);
+////            break;
+//        }
         File[] frames = frameseDir.listFiles((dir, name) -> name.endsWith(".jpeg"));
         return frames;
     }
@@ -132,14 +131,15 @@ public class FilmCreator {
         g.drawLine(canvasWidth - offset, 0, canvasWidth - offset, canvasHeight);
 
         // draw outer wheel diameter
-        int diameterMark = 50;
+        int diameterMark = 5000;
+        int halfDiameterMark = diameterMark / 2;
         g.setStroke(new BasicStroke(diameterMark));
         g.setColor(Color.BLACK);
-        g.drawOval(0, 0, canvasHeight, canvasHeight);
+        g.drawOval(0 + halfDiameterMark, 0 + halfDiameterMark, canvasHeight - diameterMark, canvasHeight - diameterMark);
 
-        int borderWidth = 500;
-        int halfBorderWidth = borderWidth / 2;
-        g.setStroke(new BasicStroke(borderWidth));
+//        int borderWidth = 500;
+//        int halfBorderWidth = borderWidth / 2;
+//        g.setStroke(new BasicStroke(borderWidth));
 
         int topMargin = 400; // most top padding we can give before the bottom of the frames intersect @ 8.5" print width
         int halfTopMargin = topMargin / 2;
@@ -159,15 +159,15 @@ public class FilmCreator {
 
             g.setTransform(a);
 
-            // draw frame border
-            g.drawRect((int) (offset - halfFrameWidth - halfBorderWidth), topMargin - halfBorderWidth,
-                    frameWidth + borderWidth, frameHeight + borderWidth);
+//            // draw frame border
+//            g.drawRect((int) (offset - halfFrameWidth - halfBorderWidth), topMargin - halfBorderWidth,
+//                    frameWidth + borderWidth, frameHeight + borderWidth);
 
             double x = midline - halfFrameWidth;
             g.drawImage(frame, (int) x, topMargin, null);
-
-
+            
         }
+
         g.dispose();
 
         String format = "JPEG";
