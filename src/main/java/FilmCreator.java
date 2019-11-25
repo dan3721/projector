@@ -7,19 +7,16 @@ import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
+import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FilenameFilter;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.nio.file.Paths;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Comparator;
+import java.util.*;
 import java.util.List;
 import java.util.stream.Collectors;
-
-import static java.lang.System.out;
 
 public class FilmCreator {
 
@@ -39,30 +36,30 @@ public class FilmCreator {
     public static final double CANVAS_WIDTH_IN_INCHES = CANVAS_WIDTH_IN_PIXELS / CANVAS_RESOLUTION_PPI;
     public static final double CANVAS_HEIGHT_IN_INCHES = CANVAS_HEIGHT_IN_PIXELS / CANVAS_RESOLUTION_PPI;
 
-    public static final double PRINT_WIDTH_IN_INCHES = 8.5;
-    public static final double PRINT_HEIGHT_IN_INCHES = 11;
+    public static final double PRINT_WIDTH_IN_INCHES = 8;
+//    public static final double PRINT_HEIGHT_IN_INCHES = 11;
 
     public static final double REDUCTION_FACTOR = CANVAS_WIDTH_IN_INCHES / PRINT_WIDTH_IN_INCHES;
     public static final double REDUCION_PERCENTAGE = 1 - (PRINT_WIDTH_IN_INCHES / CANVAS_WIDTH_IN_INCHES);
 
-    public static final double FRAME_WIDTH_IN_INCHES = IMAGE_WIDTH_IN_INCHES * (1 - REDUCION_PERCENTAGE);
-    public static final double FRAME_HEIGHT_IN_INCHES = IMAGE_HEIGHT_IN_INCHES * (1 - REDUCION_PERCENTAGE);
+    public static final double FRAME_WIDTH_IN_INCHES = IMAGE_WIDTH_IN_INCHES / REDUCTION_FACTOR;
+    public static final double FRAME_HEIGHT_IN_INCHES = IMAGE_HEIGHT_IN_INCHES / REDUCTION_FACTOR;
 
     public static final double PRINT_TARGET_PPI = CANVAS_RESOLUTION_PPI * REDUCTION_FACTOR;
 
-//    public static final double φ = (1 + Math.sqrt(5)) / 2;
+    //    public static final double φ = (1 + Math.sqrt(5)) / 2;
+
+    private final File filmsDir;
 
     public FilmCreator() {
+        File dir = Paths.get("").toAbsolutePath().toFile();
+        this.filmsDir = new File(dir, "films");
     }
 
     public final void createFilm(String filmName) throws Exception {
 
-        dumpParameters();
-
         L.info("Creating film {}...", filmName);
 
-        File dir = Paths.get("").toAbsolutePath().toFile();
-        File filmsDir = new File(dir, "films");
         File filmDir = new File(filmsDir, filmName);
         if (!filmDir.exists())
             throw new Exception("FilmCreator directory " + filmDir.getPath() + " not found!");
@@ -71,38 +68,44 @@ public class FilmCreator {
         if (!imagesDir.exists())
             throw new Exception("No images! Please put some images in " + imagesDir.getPath());
 
+        dumpDataFile(filmDir);
+
         // create frames from images
+        File[] frames = createFrames(filmDir, imagesDir);
+
+        // create film wheel from frames
+        createFilmWheel(filmName, filmDir, frames);
+        L.info("DONE");
+    }
+
+    private File[] createFrames(File filmDir, File imagesDir) throws Exception {
         File frameseDir = new File(filmDir, "frames");
         frameseDir.mkdirs();
         FileUtils.cleanDirectory(frameseDir); // delete any existing frames
         File[] images = imagesDir.listFiles();
         for (int i = 0; i < images.length; i++) {
             createFrame(images[i], i, frameseDir);
+//            break;
         }
-
-        // create film wheel from frames
-        File[] frames = frameseDir.listFiles(new FilenameFilter() {
-            @Override
-            public boolean accept(File dir, String name) {
-                return name.endsWith(".jpeg");
-            }
-        });
-        createFilmWheel(filmName, filmDir, frames);
-        L.info("DONE");
+        File[] frames = frameseDir.listFiles((dir, name) -> name.endsWith(".jpeg"));
+        return frames;
     }
 
-    private final void dumpParameters() {
+    private final void dumpDataFile(File filmDir) throws Exception {
         List<Field> fields = Arrays.stream(getClass().getDeclaredFields())
                 .filter(f -> Modifier.isStatic(f.getModifiers()) && !f.getName().matches("L"))
                 .collect(Collectors.toList());
         Collections.sort(fields, Comparator.comparing(Field::getName));
-        fields.forEach(f -> {
-            try {
-                out.println(StringUtils.rightPad(f.getName(), 24) + ": " + f.get(null));
-            } catch (IllegalAccessException e) {
-                throw new RuntimeException(e);
+        try (BufferedWriter out = new BufferedWriter(new FileWriter(new File(filmDir, "data.txt")))) {
+            Iterator<Field> iter = fields.iterator();
+            while (iter.hasNext()) {
+                Field f = iter.next();
+                out.write(StringUtils.rightPad(f.getName(), 24) + ": " + f.get(null));
+                if (iter.hasNext()) {
+                    out.newLine();
+                }
             }
-        });
+        }
     }
 
     private void createFilmWheel(String filmName, File filmDir, File[] frames) throws Exception {
@@ -128,20 +131,42 @@ public class FilmCreator {
         g.setColor(Color.RED);
         g.drawLine(canvasWidth - offset, 0, canvasWidth - offset, canvasHeight);
 
+        // draw outer wheel diameter
+        int diameterMark = 50;
+        g.setStroke(new BasicStroke(diameterMark));
+        g.setColor(Color.BLACK);
+        g.drawOval(0, 0, canvasHeight, canvasHeight);
+
+        int borderWidth = 500;
+        int halfBorderWidth = borderWidth / 2;
+        g.setStroke(new BasicStroke(borderWidth));
+
+        int topMargin = 400; // most top padding we can give before the bottom of the frames intersect @ 8.5" print width
+        int halfTopMargin = topMargin / 2;
+
         for (int i = 0; i < frames.length; i++) {
             File frameFile = frames[i];
             BufferedImage frame = ImageIO.read(frameFile);
 
-            double halfFrameHeight = frame.getHeight() / 2.0;
-            double halfFrameWidth = frame.getWidth() / 2.0;
+            int frameWidth = frame.getWidth();
+            int frameHeight = frame.getHeight();
+
+            double halfFrameWidth = frameWidth / 2.0;
+            double halfFrameHeight = frameHeight / 2.0;
+
             double rotationRequired = Math.toRadians(i * 22.5);
             AffineTransform a = AffineTransform.getRotateInstance(rotationRequired, horizon, midline);
 
             g.setTransform(a);
 
+            // draw frame border
+            g.drawRect((int) (offset - halfFrameWidth - halfBorderWidth), topMargin - halfBorderWidth,
+                    frameWidth + borderWidth, frameHeight + borderWidth);
+
             double x = midline - halfFrameWidth;
-            int topMargin = 400; // most top padding we can give before the bottom of the frames intersect
             g.drawImage(frame, (int) x, topMargin, null);
+
+
         }
         g.dispose();
 
